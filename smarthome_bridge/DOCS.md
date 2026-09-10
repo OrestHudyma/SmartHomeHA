@@ -1,26 +1,26 @@
 # SmartHome Bridge
 
-## Встановлення
+## Installation
 
-Потрібні Home Assistant OS (64-bit), USB/433 MHz контролер і MQTT-брокер із
-підтримкою MQTT 5, наприклад офіційний Mosquitto. Додайте MQTT-інтеграцію в HA.
-Додайте репозиторій `https://github.com/OrestHudyma/SmartHomeHA` до магазину додатків
-і встановіть SmartHome Bridge. Перша збірка на Raspberry може тривати кілька хвилин.
+Requires Home Assistant OS (64-bit), a USB/433 MHz controller and an MQTT 5 broker,
+such as the official Mosquitto app. Configure the MQTT integration in HA.
+Add `https://github.com/OrestHudyma/SmartHomeHA` to the app repositories and install
+SmartHome Bridge. The initial build on a Raspberry Pi can take several minutes.
 
-У вкладці конфігурації виберіть порт контролера, бажано `/dev/serial/by-id/...`.
-Додаток отримує доступ до serial-пристроїв через Supervisor, але відкриває лише
-вказаний порт. Автосканування чужих Zigbee/Z-Wave адаптерів не виконується.
-Відсутній або зайнятий контролер відображається як недоступний; повторна спроба —
-кожні 5 секунд. Перевірка наявного з'єднання виконується кожні 30 секунд.
+Select the controller port in Configuration, preferably `/dev/serial/by-id/...`.
+Supervisor provides serial-device access, but the app opens only the selected port.
+It does not scan unrelated Zigbee/Z-Wave adapters. A missing or busy controller is
+reported as unavailable; reconnection is attempted every 5 seconds. An established
+connection is checked every 30 seconds.
 
-Збережіть конфігурацію, запустіть додаток, відкрийте журнали. Після підключення до
-MQTT сутності автоматично з'являться в MQTT-інтеграції. Увімкніть запуск при
-завантаженні та, за потреби, стандартний перезапуск додатка Supervisor.
+Save the configuration, start the app and inspect its logs. Entities appear in the
+MQTT integration after connection. Enable Start on boot and, if desired, the
+Supervisor watchdog after completing the acceptance checks.
 
-## Налаштування через YAML
+## YAML configuration
 
-Редагуйте YAML у вкладці **Конфігурація** додатка. Supervisor передає його програмі
-як `/data/options.json`; це не `configuration.yaml` Home Assistant.
+Edit YAML in the app's Configuration tab. Supervisor passes it to the application
+as `/data/options.json`; this is not Home Assistant's `configuration.yaml`.
 
 ```yaml
 serial_port: /dev/serial/by-id/usb-YOUR_CONTROLLER
@@ -28,16 +28,16 @@ bridge_id: smarthome
 devices:
   - type: boiler
     id: "1"
-    name: Бойлер
+    name: Boiler
   - type: fito_lamp
     id: "1"
-    name: Фітолампа — кухня
+    name: Grow light - Kitchen
   - type: fito_lamp
     id: "2"
-    name: Фітолампа — балкон
+    name: Grow light - Balcony
   - type: global
     id: "1"
-    name: Загальні команди
+    name: Global controls
 mqtt_host: ""
 mqtt_port: 1883
 mqtt_username: ""
@@ -49,90 +49,91 @@ refresh_seconds: 3600
 log_level: INFO
 ```
 
-Порожній `mqtt_host` використовує MQTT service credentials від Supervisor
-(офіційний Mosquitto). Для іншого брокера вкажіть адресу, порт і облікові дані.
-`mqtt_tls: true` вмикає TLS із перевіркою сертифіката через системні CA контейнера.
-Безпосередньо сертифікати клієнта/приватні CA в цій версії не налаштовуються.
-Обліковому запису MQTT потрібні права публікації Discovery та станів, підписки на
-команди мосту й `ha_status_topic`. При відмові підписки виправте права і перезапустіть
-додаток. Якщо Supervisor змінив MQTT-пароль, перезапустіть додаток для його повторного
-отримання.
+An empty `mqtt_host` uses Supervisor MQTT service credentials (official Mosquitto).
+For another broker, specify its host, port and credentials. `mqtt_tls: true` enables
+TLS with certificate verification using the container's system CAs. Client
+certificates and private CAs are not configurable in this version.
+The MQTT account needs permission to publish Discovery and state messages and to
+subscribe to bridge commands and `ha_status_topic`. If a subscription is denied,
+fix permissions and restart the app. Restart the app to fetch new credentials if
+Supervisor changes its MQTT password.
 
-`bridge_id` має бути унікальним у межах MQTT-брокера. Не змінюйте його або ID
-наявного пристрою без потреби: вони визначають постійну ідентичність сутностей і
-збережені блокування. Поле `name` можна змінювати без створення нових сутностей.
-ID передається фітолампі як рядок і має точно відповідати її прошивці. Перевірка
-формату не гарантує наявності фізичного пристрою.
+`bridge_id` must be unique on the broker. Avoid changing it or existing device IDs:
+they determine entity identity and persisted interlocks. Changing `name` updates
+display names without creating new entities. Home Assistant keeps existing
+`entity_id` values, including IDs generated from names used by previous versions.
+The grow light ID is sent as a string and must exactly match its firmware.
+Format validation cannot establish that a physical device exists.
 
-Додаткова фітолампа: додайте запис, збережіть і перезапустіть додаток. Другий
-бойлер не підтримується: поточний протокол не містить адреси бойлера. Загальна
-група `global` також може бути лише одна. Видалені записи прибирають відповідні
-Discovery-конфігурації під час наступного запуску.
+To add another grow light, add a device entry, save and restart the app. A second
+boiler is not supported because the current boiler protocol has no address.
+Only one `global` group is allowed. Removed entries have their Discovery
+configurations cleared on the next app start.
 
-## Поведінка станів і команд
+## State and command behavior
 
-Живлення — **остання успішно передана команда**, а не виміряний фізичний стан.
-Властивість `physical_state_confirmed: false` показує це в атрибутах сутності.
-Після старту/USB-відновлення/MQTT-перепідключення стан невідомий. Жоден початковий
-`power=True` з апаратного класу не запускає ввімкнення. Нову команду задає користувач
-або HA-автоматизація. Глобальні команди роблять стан ламп невідомим, оскільки
-індивідуального підтвердження немає. Внутрішні розклади прошивок можуть змінювати
-фізичний стан незалежно від останньої команди.
+Power represents the **last successfully transmitted command**, not measured
+physical state. Entity attributes include `physical_state_confirmed: false`.
+Power is unknown after startup, USB recovery or MQTT reconnection. An initial
+`power=True` in an upstream hardware class does not cause a power-on command.
+The user or an HA automation must issue a new command. Global commands make lamp
+states unknown because there is no individual acknowledgement. Firmware schedules
+can change physical state independently of the last transmitted command.
 
-**Дозвіл роботи бойлера** зберігається в `/data/state.json`. Вимкнення дозволу
-спочатку зберігає блокування, потім надсилає OFF. Помилка OFF не скасовує блокування,
-але не означає, що прилад фізично вимкнувся. Після відновлення зв'язку слід повторити
-OFF (приклад автоматизації це робить). Увімкнення дозволу саме по собі не надсилає ON.
-Пошкоджений файл стану зупиняє запуск; відновіть його з резервної копії, щоб не
-втратити блокування. Це програмний дозвіл, а не заміна термозахисту чи фізичного
-вимикача; він не змінює автономну логіку прошивки бойлера.
+The boiler's **Enabled** interlock is saved in `/data/state.json`. Disabling it
+persists the restriction before sending OFF. Failed OFF transmission does not
+release the interlock, but it also does not prove the device physically switched
+off. Repeat OFF after connectivity returns (the automation example does this).
+Enabling the interlock alone sends no ON command. A corrupt state file prevents
+startup; restore a backup to preserve the restriction. This is a software interlock,
+not a substitute for thermal protection or a physical switch. It does not change
+the boiler firmware's autonomous behavior.
 
-Команди виконуються послідовно; черга — до 32 команд, час життя — 10 секунд.
-Retained-команди відхиляються навіть при доставці активному підписнику. MQTT-сесія
-не зберігає чергу на час відключення. MQTT QoS 1 може дублювати доставку; команди
-задають ON/OFF, а не TOGGLE. Повторний прийом може поновити таймер у прошивці.
+Commands execute sequentially, with a queue limit of 32 and a lifetime of 10 seconds.
+Retained commands are rejected, including live retained deliveries. The MQTT session
+does not queue commands while disconnected. MQTT QoS 1 can duplicate delivery;
+commands specify ON/OFF rather than TOGGLE. Repeated commands may reset firmware timers.
 
-При serial-помилці поточне з'єднання закривається, стани стають невідомими,
-керування — недоступним, черга втрачає актуальність. Запущена serial-передача не
-переривається посередині через втрату MQTT; решта старих команд не виконується.
-Після завершення додатка MQTT отримує `offline`; при аварійному відключенні це
-робить Last Will брокера після виявлення розриву/keepalive.
+On a serial error the connection closes, power states become unknown, control
+becomes unavailable and queued commands are invalidated. An in-progress serial
+transmission is not interrupted halfway by MQTT loss; remaining stale commands are
+not executed. A clean shutdown publishes `offline`. An unclean disconnect relies on
+the broker's Last Will after connection-loss or keepalive detection.
 
-## Розклад
+## Schedule
 
-Додаток не містить календарного розкладу. Приклад у
-[`examples/boiler_schedule.yaml`](../examples/boiler_schedule.yaml) потрібно додати
-через редактор YAML однієї автоматизації HA. Замініть три entity_id фактичними
-ідентифікаторами з вашого HA. Час береться з часової зони Home Assistant:
-05:00–22:00 — ON за наявності дозволу, решта часу — OFF.
+The app has no calendar schedule. Paste
+[`examples/boiler_schedule.yaml`](../examples/boiler_schedule.yaml) into the YAML
+editor for one HA automation. Replace its three entity IDs with the actual IDs in
+your HA instance. Time is interpreted in Home Assistant's configured timezone:
+05:00-22:00 means ON when enabled; all other times mean OFF.
 
-Автоматизація також узгоджує стан після запуску HA, повернення доступності й
-зміни дозволу. Останнє означає: увімкнення дозволу вдень може ввімкнути бойлер
-саме через цю автоматизацію. Ручна команда діє до наступного спрацювання розкладу.
+The automation also reconciles state after HA startup, restored availability and
+interlock changes. Consequently, enabling the boiler during daytime can turn it
+on through this automation. A manual command lasts until the next schedule trigger.
 
-`refresh_seconds` повторює лише відомий режим бойлера. Фітолампи не отримують
-періодичних повторів, щоб не змінювати автономні таймери прошивки. При втраті
-MQTT або повідомленні HA `offline` повтори зупиняються; після повернення стан
-потрібно узгодити заново. Якщо HA аварійно зупинений, виявлення залежить від його
-MQTT Last Will. Без налаштованого Birth/Will додаток не може визначити, що HA
-зник, поки MQTT-брокер доступний. Рекомендовано залишити стандартні Birth/Will
-на `homeassistant/status`. Поведінка фізичних пристроїв за відсутності команд
-визначається їхньою прошивкою.
+`refresh_seconds` repeats only a known boiler state. Grow lights do not receive
+periodic repeats, to avoid changing autonomous firmware timers. Repeats stop when
+MQTT disconnects or HA reports `offline`; state must be reconciled after recovery.
+Detection of an HA crash depends on its MQTT Last Will. Without Birth/Will messages,
+the app cannot detect HA loss while the broker remains available. Keep the default
+Birth/Will messages on `homeassistant/status`. Physical behavior when no commands
+arrive is determined by each device's firmware.
 
-## Оновлення, резервні копії та відкат
+## Updates, backups and rollback
 
-Оновлюйте додаток через Home Assistant після резервної копії. Supervisor збере
-контейнер відповідної версії. Автоматичне оновлення можна ввімкнути у HA, але
-для першої експериментальної версії перевірте керування вручну після оновлення.
-Налаштування й `/data/state.json` входять у дані додатка для резервних копій HA.
-Для відкату відновіть попередню резервну копію додатка разом із його даними.
+Back up the app before updating through Home Assistant. Supervisor builds the
+container for the selected version. HA can enable automatic updates, but manually
+verify control after updating this experimental version. App backups include
+options and `/data/state.json`. To roll back, restore the previous app backup
+together with its data.
 
-## Приймальна перевірка
+## Acceptance checks
 
-1. Перевірити вибраний USB-порт і зупинити інший процес, який міг його відкрити.
-2. Запустити додаток; очікувати доступний USB, невідоме живлення, без ON-команд.
-3. У погоджений час перевірити OFF/ON бойлера й кожної лампи, швидкі кнопки.
-4. Вимкнути дозвіл бойлера, перезапустити додаток і перевірити збереження заборони ON.
-5. Перезапустити HA/MQTT, перепідключити USB: без дублікатів сутностей і старих команд.
-6. Додати автоматизацію, перевірити часову зону та відновлення після перезапуску.
-7. Лише після цього залишати систему працювати автономно.
+1. Verify the selected USB port and stop any competing process that owns it.
+2. Start the app: expect USB available, unknown power and no ON commands.
+3. At an agreed time, test boiler and lamp OFF/ON commands and fast buttons.
+4. Disable the boiler, restart the app and confirm that ON remains blocked.
+5. Restart HA/MQTT and reconnect USB: no duplicate entities or stale commands.
+6. Add the automation and verify timezone and restart recovery.
+7. Complete these checks before leaving the system unattended.

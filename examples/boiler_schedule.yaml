@@ -1,7 +1,7 @@
 # Paste this as ONE automation in the HA automation YAML editor.
 # Replace entity IDs with the IDs assigned by your Home Assistant instance.
-alias: SmartHome — розклад бойлера
-description: Узгодження режиму 05:00–22:00 з урахуванням дозволу роботи
+alias: SmartHome - Boiler schedule
+description: Reconcile the 05:00-22:00 schedule while respecting the boiler interlock
 triggers:
   - trigger: time
     at: "05:00:00"

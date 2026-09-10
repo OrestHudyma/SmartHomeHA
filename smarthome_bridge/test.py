@@ -23,16 +23,45 @@ import paho.mqtt.client as mqtt
 
 def options(**kwargs):
     return dict(serial_port='/dev/serial/by-id/controller', devices=[
-        {'type': 'boiler', 'id': '1', 'name': 'Бойлер'},
-        {'type': 'fito_lamp', 'id': '1', 'name': 'Лампа'},
-        {'type': 'global', 'id': '1', 'name': 'Загальні'},
+        {'type': 'boiler', 'id': '1', 'name': 'Boiler'},
+        {'type': 'fito_lamp', 'id': '1', 'name': 'Grow light'},
+        {'type': 'global', 'id': '1', 'name': 'Global controls'},
     ], **kwargs)
 
 
 class SettingsTests(unittest.TestCase):
+    def test_shipped_names_are_english_and_identity_is_stable(self):
+        import yaml
+        root = Path(__file__).parent
+        config = yaml.safe_load((root / 'config.yaml').read_text(encoding='utf-8'))
+        settings = Settings.from_dict(dict(config['options'], serial_port='/dev/ttyUSB0'))
+        self.assertEqual([d.name for d in settings.devices],
+                         ['Boiler', 'Grow light', 'Global controls'])
+        messages = discovery_messages(settings)
+        expected = {
+            'smarthome_boiler_1_power': 'Power',
+            'smarthome_boiler_1_enabled': 'Enabled',
+            'smarthome_boiler_1_result': 'Command result',
+            'smarthome_fito_lamp_1_power': 'Power',
+            'smarthome_fito_lamp_1_fast_on': 'Fast on',
+            'smarthome_fito_lamp_1_fast_off': 'Fast off',
+            'smarthome_fito_lamp_1_result': 'Command result',
+            'smarthome_global_1_day': 'Day',
+            'smarthome_global_1_night': 'Night',
+            'smarthome_global_1_result': 'Command result',
+            'smarthome_controller': 'USB controller',
+        }
+        self.assertEqual({m['unique_id']: m['name'] for m in messages.values()}, expected)
+        self.assertEqual(set(messages), set(discovery_messages(Settings.from_dict(options()))))
+        for message in messages.values():
+            self.assertTrue(message['device']['name'].isascii())
+        labels = yaml.safe_load((root / 'translations/en.yaml').read_text(encoding='utf-8'))
+        for field in labels['configuration'].values():
+            self.assertTrue(all(value.isascii() for value in field.values()))
+
     def test_defaults_and_multiple_lamps(self):
         data = options()
-        data['devices'].append({'type': 'fito_lamp', 'id': '2', 'name': 'Лампа 2'})
+        data['devices'].append({'type': 'fito_lamp', 'id': '2', 'name': 'Grow light 2'})
         config = Settings.from_dict(data)
         self.assertEqual(config.devices[-1].key, 'fito_lamp_2')
         self.assertEqual(config.refresh_seconds, 3600)

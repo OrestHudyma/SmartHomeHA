@@ -5,8 +5,8 @@ from .base import Adapter
 class FitoLampAdapter(Adapter):
     power_domain = "light"
     buttons = {
-        "fast_on": ("Швидко увімкнути", "power_on_fast"),
-        "fast_off": ("Швидко вимкнути", "power_off_fast"),
+        "fast_on": ("Fast on", "power_on_fast"),
+        "fast_off": ("Fast off", "power_off_fast"),
     }
 
     @staticmethod

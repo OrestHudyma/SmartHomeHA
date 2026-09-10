@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Use English device names, entity names, configuration labels and documentation.
+- Preserve MQTT unique IDs and topics when updating display names.
+
 ## 0.1.0
 
 - Home Assistant app for aarch64 and amd64 with MQTT Discovery.

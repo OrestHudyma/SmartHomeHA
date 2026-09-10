@@ -1,0 +1,19 @@
+configuration:
+  serial_port:
+    name: USB controller
+    description: Select the controller port. Prefer a stable /dev/serial/by-id/ path.
+  bridge_id:
+    name: Bridge ID
+    description: A unique, permanent ID for MQTT and Home Assistant entities.
+  devices:
+    name: Devices
+    description: Devices with type, id and name. Grow light IDs must match their firmware.
+  mqtt_host:
+    name: MQTT broker
+    description: Leave empty to use automatic Mosquitto settings from Supervisor.
+  mqtt_password:
+    name: MQTT password
+  refresh_seconds:
+    name: Boiler refresh interval
+  log_level:
+    name: Log level

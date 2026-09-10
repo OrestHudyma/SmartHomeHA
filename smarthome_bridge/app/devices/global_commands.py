@@ -5,8 +5,8 @@ from .base import Adapter
 class GlobalAdapter(Adapter):
     singleton = True
     buttons = {
-        "day": ("День", "day_light"),
-        "night": ("Ніч", "night_light"),
+        "day": ("Day", "day_light"),
+        "night": ("Night", "night_light"),
     }
 
     @staticmethod

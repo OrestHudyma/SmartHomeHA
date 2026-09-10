@@ -1,5 +1,5 @@
 name: SmartHome Bridge
-version: "0.1.0"
+version: "0.1.1"
 slug: smarthome_bridge
 description: USB/433 MHz boiler and grow-light control through MQTT Discovery
 url: https://github.com/OrestHudyma/SmartHomeHA
@@ -21,13 +21,13 @@ options:
   devices:
     - type: boiler
       id: "1"
-      name: Бойлер
+      name: Boiler
     - type: fito_lamp
       id: "1"
-      name: Фітолампа
+      name: Grow light
     - type: global
       id: "1"
-      name: Загальне керування
+      name: Global controls
   mqtt_host: ""
   mqtt_port: 1883
   mqtt_username: ""

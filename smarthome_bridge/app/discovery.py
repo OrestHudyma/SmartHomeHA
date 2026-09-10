@@ -1,7 +1,7 @@
 """Home Assistant MQTT discovery, keyed by identity rather than display names."""
 from devices.registry import REGISTRY
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 def discovery_messages(settings):
@@ -26,13 +26,13 @@ def discovery_messages(settings):
             }
 
         if adapter.power_domain:
-            add(adapter.power_domain, "power", "Живлення", {
+            add(adapter.power_domain, "power", "Power", {
                 "command_topic": f"{base}/power/set", "state_topic": f"{base}/power/state",
                 "payload_on": "ON", "payload_off": "OFF", "optimistic": False,
                 "retain": False, "qos": 1, "json_attributes_topic": f"{base}/attributes",
             })
         if config.type == "boiler":
-            add("switch", "enabled", "Дозвіл роботи", {
+            add("switch", "enabled", "Enabled", {
                 "command_topic": f"{base}/enabled/set", "state_topic": f"{base}/enabled/state",
                 "payload_on": "ON", "payload_off": "OFF", "optimistic": False,
                 "retain": False, "qos": 1,
@@ -42,12 +42,12 @@ def discovery_messages(settings):
                 "command_topic": f"{base}/{action}/set", "payload_press": "PRESS",
                 "retain": False, "qos": 1,
             })
-        add("sensor", "result", "Результат команди", {
+        add("sensor", "result", "Command result", {
             "state_topic": f"{base}/result", "entity_category": "diagnostic",
             "availability": [bridge_availability],
         })
     result[f"{settings.discovery_prefix}/binary_sensor/{settings.bridge_id}_controller/config"] = {
-        "unique_id": f"{settings.bridge_id}_controller", "name": "USB-контролер",
+        "unique_id": f"{settings.bridge_id}_controller", "name": "USB controller",
         "device_class": "connectivity", "entity_category": "diagnostic",
         "state_topic": f"{prefix}/hardware", "payload_on": "online", "payload_off": "offline",
         "availability": [bridge_availability],
