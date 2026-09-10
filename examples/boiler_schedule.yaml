@@ -1,0 +1,42 @@
+# Paste this as ONE automation in the HA automation YAML editor.
+# Replace entity IDs with the IDs assigned by your Home Assistant instance.
+alias: SmartHome — розклад бойлера
+description: Узгодження режиму 05:00–22:00 з урахуванням дозволу роботи
+triggers:
+  - trigger: time
+    at: "05:00:00"
+  - trigger: time
+    at: "22:00:00"
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: switch.boiler_enabled
+  - trigger: state
+    entity_id: binary_sensor.smarthome_controller
+    to: "on"
+  - trigger: state
+    entity_id: switch.boiler_power
+    from: "unavailable"
+  - trigger: state
+    entity_id: switch.boiler_power
+    to: "unknown"
+conditions:
+  - condition: template
+    value_template: "{{ states('switch.boiler_power') != 'unavailable' }}"
+actions:
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: switch.boiler_enabled
+            state: "on"
+          - condition: template
+            value_template: "{{ 5 <= now().hour < 22 }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.boiler_power
+    default:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.boiler_power
+mode: restart

@@ -1,0 +1,54 @@
+name: Tests and container builds
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: python scripts/check_upstream.py
+      - name: Start isolated MQTT broker
+        run: |
+          docker run -d --name mqtt -p 127.0.0.1:18884:1883 \
+            --mount "type=bind,source=$PWD/scripts/mosquitto-test.conf,target=/mosquitto/config/mosquitto.conf,readonly" \
+            eclipse-mosquitto:2.0.22
+          for attempt in 1 2 3 4 5; do
+            if docker exec mqtt mosquitto_pub -t ci/ready -m ready; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Unit, MQTT and real serial-PTY integration tests
+        env:
+          MQTT_TEST_PORT: "18884"
+        run: python -m unittest discover -s smarthome_bridge -p test.py -v
+      - if: always()
+        run: docker logs mqtt
+  containers:
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: smarthome_bridge
+          platforms: ${{ matrix.platform }}
+          build-args: BUILD_ARCH=${{ matrix.arch }}
+          push: false

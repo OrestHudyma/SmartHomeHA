@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/OrestHudyma/SmartHomeServer",
+  "commit": "da75b65a0b369643ea16cf762d19d835975c3e21",
+  "sha256": {
+    "periphery.py": "f9dd71701594f043341ddc1d4b03c877b8bb3a7fba88bf4425de03c6374ba597",
+    "nmea.py": "2dd847678a3ab64d4ccc6706e24f93b08ba22d2fc0d57b466898d787c03a2bbc"
+  }
+}

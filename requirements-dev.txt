@@ -1,0 +1,2 @@
+-r smarthome_bridge/requirements.txt
+PyYAML==6.0.2

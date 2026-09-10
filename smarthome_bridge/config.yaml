@@ -1,0 +1,55 @@
+name: SmartHome Bridge
+version: "0.1.0"
+slug: smarthome_bridge
+description: USB/433 MHz boiler and grow-light control through MQTT Discovery
+url: https://github.com/OrestHudyma/SmartHomeHA
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+init: true
+stage: experimental
+uart: true
+udev: true
+hassio_api: true
+services:
+  - mqtt:want
+timeout: 30
+options:
+  bridge_id: smarthome
+  devices:
+    - type: boiler
+      id: "1"
+      name: Бойлер
+    - type: fito_lamp
+      id: "1"
+      name: Фітолампа
+    - type: global
+      id: "1"
+      name: Загальне керування
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
+  mqtt_tls: false
+  discovery_prefix: homeassistant
+  ha_status_topic: homeassistant/status
+  refresh_seconds: 3600
+  log_level: INFO
+schema:
+  serial_port: device(subsystem=tty)
+  bridge_id: match(^[a-zA-Z0-9_-]{1,32}$)
+  devices:
+    - type: list(boiler|fito_lamp|global)
+      id: str
+      name: str
+  mqtt_host: str
+  mqtt_port: port
+  mqtt_username: str
+  mqtt_password: password
+  mqtt_tls: bool
+  discovery_prefix: str
+  ha_status_topic: str
+  refresh_seconds: int(60,3600)
+  log_level: list(DEBUG|INFO|WARNING|ERROR)
