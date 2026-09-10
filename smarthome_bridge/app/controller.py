@@ -120,18 +120,21 @@ class Controller:
 
     def _sync(self):
         messages = discovery_messages(self.settings)
+        published = True
         # Only delete discovery configs which this instance previously published.
         for topic in set(self.store.data["discovery_topics"]) - set(messages):
-            self.publish(topic, "", True)
+            published = self.publish(topic, "", True) and published
         for topic, payload in messages.items():
-            self.publish(topic, payload, True)
-        if sorted(messages) != self.store.data["discovery_topics"]:
+            published = self.publish(topic, payload, True) and published
+        if not published:
+            self.resync.set()  # Keep ownership so failed removals can be retried.
+        elif sorted(messages) != self.store.data["discovery_topics"]:
             self.store.set_discovery_topics(messages)
         self.publish_states()
         self._emit("hardware", "online" if self.hardware is not None else "offline")
         self._emit("availability", "online")
         with self.lock:
-            self.ready = self.connected and self.hardware is not None
+            self.ready = self.connected and self.ha_online and self.hardware is not None
 
     def tick(self):
         with self.lock:

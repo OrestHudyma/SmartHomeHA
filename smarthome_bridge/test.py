@@ -247,6 +247,18 @@ class ControllerTests(unittest.TestCase):
         self.controller.tick()
         self.hardware.transmit_fm433.assert_called_once()
 
+    def test_ha_offline_rejects_commands_until_online(self):
+        self.assertTrue(self.controller.submit('boiler_1', 'power', 'ON'))
+        self.controller.home_assistant_status(False)
+        self.controller.tick()
+        self.assertFalse(self.controller.submit('boiler_1', 'power', 'ON'))
+        self.hardware.transmit_fm433.assert_not_called()
+        self.controller.home_assistant_status(True)
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_not_called()
+        self.command('boiler_1', 'power', 'OFF')
+        self.hardware.transmit_fm433.assert_called_once()
+
     def test_refresh_only_for_initialized_boiler(self):
         self.now = 3601
         self.controller.tick()
@@ -287,6 +299,20 @@ class ControllerTests(unittest.TestCase):
         self.controller.resync.set()
         self.controller.tick()
         self.publish.assert_any_call(stale, '', True)
+
+    def test_failed_discovery_removal_is_retried(self):
+        stale = 'homeassistant/light/smarthome_fito_lamp_2_power/config'
+        self.store.set_discovery_topics([stale])
+        self.publish.side_effect = lambda topic, payload, retain: topic != stale
+        self.controller.resync.set()
+        self.controller.tick()
+        self.assertIn(stale, self.store.data['discovery_topics'])
+        self.assertTrue(self.controller.resync.is_set())
+        self.publish.side_effect = None
+        self.publish.reset_mock()
+        self.controller.tick()
+        self.publish.assert_any_call(stale, '', True)
+        self.assertNotIn(stale, self.store.data['discovery_topics'])
 
     def test_ha_restart_republishes_without_hardware_commands(self):
         self.controller.resync.set()
