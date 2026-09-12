@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Check USB controller health every 10 minutes; retain 5-second reconnect retries.
+- Repeat known Grow light ON/OFF states using the shared device refresh interval.
+- Preserve unknown-state and connection-loss safeguards during lamp refresh.
+
 ## 0.1.1
 
 - Use English device names, entity names, configuration labels and documentation.

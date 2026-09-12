@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Home Assistant Dashboard
+Exec=/home/orest/.local/bin/ha-dashboard.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true

@@ -1,5 +1,5 @@
 name: SmartHome Bridge
-version: "0.1.1"
+version: "0.1.2"
 slug: smarthome_bridge
 description: USB/433 MHz boiler and grow-light control through MQTT Discovery
 url: https://github.com/OrestHudyma/SmartHomeHA

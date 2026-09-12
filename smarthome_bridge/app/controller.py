@@ -22,6 +22,8 @@ class Command:
 
 
 class Controller:
+    HEALTH_CHECK_SECONDS = 600
+
     def __init__(self, settings, store, publish, hardware_factory=HardwareAdapter, clock=time.monotonic):
         self.settings, self.store, self.publish = settings, store, publish
         self.hardware_factory, self.clock = hardware_factory, clock
@@ -112,7 +114,7 @@ class Controller:
                 adapter.device.interface = self.hardware
                 if adapter.config.type == "boiler":
                     adapter.device.enabled = self.states[key]["enabled"]
-            self.next_health = self.clock() + 30
+            self.next_health = self.clock() + self.HEALTH_CHECK_SECONDS
             self.resync.set()
         except (OSError, ValueError, ConnectionError):
             LOG.warning("USB controller unavailable; retrying in 5 seconds")
@@ -166,7 +168,7 @@ class Controller:
             try:
                 if not self.hardware.test():
                     raise ConnectionError("Controller health check failed")
-                self.next_health = self.clock() + 30
+                self.next_health = self.clock() + self.HEALTH_CHECK_SECONDS
             except (OSError, ValueError, ConnectionError):
                 self._drop_hardware()
         if self.hardware is not None and self.clock() >= self.next_refresh:
@@ -175,7 +177,7 @@ class Controller:
                 with self.lock:
                     online, generation = self.connected and self.ready and self.ha_online, self.generation
                 power = self.states[key]["power"]
-                if online and adapter.config.type == "boiler" and power is not None:
+                if online and adapter.config.type in ("boiler", "fito_lamp") and power is not None:
                     self._execute(Command(key, "power", power, generation, self.clock() + 10))
 
     def _execute(self, command):

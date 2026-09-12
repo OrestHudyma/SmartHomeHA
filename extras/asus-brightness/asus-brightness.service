@@ -1,0 +1,20 @@
+[Unit]
+Description=ASUS Home Assistant MQTT backlight
+Wants=network-online.target
+After=network-online.target display-manager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/asus-brightness/brightness.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/sys/devices/pci0000:00/0000:00:02.0/drm/card0/card0-LVDS-1/intel_backlight
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

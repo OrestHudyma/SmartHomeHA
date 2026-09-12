@@ -1,7 +1,7 @@
 """Home Assistant MQTT discovery, keyed by identity rather than display names."""
 from devices.registry import REGISTRY
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 def discovery_messages(settings):

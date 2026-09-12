@@ -35,6 +35,9 @@ The original `periphery.py` and `nmea.py` are byte-identical to upstream commit
 `da75b65a0b369643ea16cf762d19d835975c3e21`. Their SHA-256 hashes are recorded in
 [upstream.json](upstream.json) and checked in CI. Git history is preserved.
 
-Version 0.1.1 is experimental pending acceptance on the actual controller. Moving
-the controller from the old server is required before production deployment; only
-one process should own the USB port.
+The app remains experimental. Only one process should own the USB port.
+
+Optional, separately installed [ASUS wall-display configuration](extras/README.md)
+includes Firefox kiosk setup and schedule-controlled MQTT backlight (100% day,
+15% night). Updating the bridge app does not install or change these files on the
+display or in Home Assistant.

@@ -11,7 +11,7 @@ Select the controller port in Configuration, preferably `/dev/serial/by-id/...`.
 Supervisor provides serial-device access, but the app opens only the selected port.
 It does not scan unrelated Zigbee/Z-Wave adapters. A missing or busy controller is
 reported as unavailable; reconnection is attempted every 5 seconds. An established
-connection is checked every 30 seconds.
+connection is checked every 600 seconds (10 minutes).
 
 Save the configuration, start the app and inspect its logs. Entities appear in the
 MQTT integration after connection. Enable Start on boot and, if desired, the
@@ -112,8 +112,13 @@ The automation also reconciles state after HA startup, restored availability and
 interlock changes. Consequently, enabling the boiler during daytime can turn it
 on through this automation. A manual command lasts until the next schedule trigger.
 
-`refresh_seconds` repeats only a known boiler state. Grow lights do not receive
-periodic repeats, to avoid changing autonomous firmware timers. Repeats stop when
+`refresh_seconds` repeats known Boiler and Grow light states (default: 3600 seconds;
+range: 60-3600). Each configured lamp receives its own addressed ON/OFF command.
+After Fast on/off, repeats use ordinary ON/OFF, matching the original server's
+`FitoLamp.refresh()` behavior; they do not replay fast commands or global broadcasts.
+Repeated commands can renew firmware override timers; they are not physical-state
+acknowledgments. Unknown states, including lamp states invalidated by global
+day/night commands, are not repeated. Repeats stop when USB is unavailable,
 MQTT disconnects or HA reports `offline`; state must be reconciled after recovery.
 Detection of an HA crash depends on its MQTT Last Will. Without Birth/Will messages,
 the app cannot detect HA loss while the broker remains available. Keep the default

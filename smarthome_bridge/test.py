@@ -288,7 +288,7 @@ class ControllerTests(unittest.TestCase):
         self.command('boiler_1', 'power', 'OFF')
         self.hardware.transmit_fm433.assert_called_once()
 
-    def test_refresh_only_for_initialized_boiler(self):
+    def test_refresh_only_for_initialized_devices(self):
         self.now = 3601
         self.controller.tick()
         self.hardware.transmit_fm433.assert_not_called()
@@ -298,10 +298,124 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.hardware.transmit_fm433.call_args_list,
                          [call('$SHBCC,OFF,*16\n'), call('$SHBCC,OFF,*16\n')])
 
+    def test_lamp_refresh_repeats_power_not_fast_commands(self):
+        for action, payload, power in [('power', 'ON', 'ON'), ('power', 'OFF', 'OFF'),
+                                       ('fast_on', 'PRESS', 'ON'), ('fast_off', 'PRESS', 'OFF')]:
+            with self.subTest(action=action, payload=payload):
+                self.command('fito_lamp_1', action, payload)
+                self.hardware.transmit_fm433.reset_mock()
+                self.now = self.controller.next_refresh - 1
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_not_called()
+                self.now += 1
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_called_once_with(
+                    nmea.compose('SHFTL', power, ['1']))
+                self.assertEqual(self.controller.states['fito_lamp_1']['power'], power)
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_called_once()
+
+    def test_refresh_addresses_each_lamp_and_preserves_boiler(self):
+        data = options()
+        data['refresh_seconds'] = 60
+        data['devices'].append({'type': 'fito_lamp', 'id': '2', 'name': 'Grow light 2'})
+        self.controller = Controller(Settings.from_dict(data), self.store, self.publish,
+                                     self.factory, lambda: self.now)
+        self.controller.network_changed(True)
+        self.controller.tick()
+        self.command('boiler_1', 'power', 'ON')
+        self.command('fito_lamp_1', 'power', 'OFF')
+        self.command('fito_lamp_2', 'power', 'ON')
+        self.hardware.transmit_fm433.reset_mock()
+        self.now = 60
+        self.controller.tick()
+        self.assertEqual(self.hardware.transmit_fm433.call_args_list, [
+            call(nmea.compose('SHBCC', 'ON')),
+            call(nmea.compose('SHFTL', 'OFF', ['1'])),
+            call(nmea.compose('SHFTL', 'ON', ['2']))])
+
+    def test_lamp_refresh_stops_after_network_loss_and_recovery(self):
+        for change in (self.controller.network_changed, self.controller.home_assistant_status):
+            with self.subTest(change=change.__name__):
+                self.command('fito_lamp_1', 'power', 'ON')
+                self.hardware.transmit_fm433.reset_mock()
+                change(False)
+                self.now += 4000
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_not_called()
+                change(True)
+                self.controller.tick()
+                self.now += 4000
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_not_called()
+                self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+
+    def test_lamp_refresh_failure_invalidates_state_without_replay(self):
+        self.command('fito_lamp_1', 'power', 'ON')
+        self.hardware.transmit_fm433.reset_mock()
+        self.hardware.transmit_fm433.return_value = 'error'
+        self.now = 3600
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_called_once()
+        self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+        self.assertFalse(self.controller.ready)
+        self.hardware.close.assert_called_once()
+        self.hardware.transmit_fm433.return_value = 'ok'
+        self.now += 6
+        self.controller.tick()
+        self.now += 4000
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_called_once()
+
+    def test_usb_health_checks_every_ten_minutes(self):
+        self.hardware.test.reset_mock()
+        for timestamp, expected in [(599, 0), (600, 1), (1199, 1), (1200, 2)]:
+            with self.subTest(timestamp=timestamp):
+                self.now = timestamp
+                self.controller.tick()
+                self.assertEqual(self.hardware.test.call_count, expected)
+        self.hardware.transmit_fm433.assert_not_called()
+
+    def test_usb_health_failure_retries_after_five_seconds(self):
+        self.hardware.test.return_value = False
+        self.now = 600
+        self.controller.tick()
+        self.assertFalse(self.controller.ready)
+        self.hardware.close.assert_called_once()
+        self.now = 604
+        self.controller.tick()
+        self.assertEqual(self.factory.call_count, 1)
+        self.hardware.test.return_value = True
+        self.now = 605
+        self.controller.tick()
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertTrue(self.controller.ready)
+        self.hardware.test.reset_mock()
+        self.now = 1204
+        self.controller.tick()
+        self.hardware.test.assert_not_called()
+        self.now = 1205
+        self.controller.tick()
+        self.hardware.test.assert_called_once()
+        self.hardware.transmit_fm433.assert_not_called()
+
+    def test_usb_health_failure_prevents_lamp_refresh(self):
+        self.command('fito_lamp_1', 'power', 'OFF')
+        self.hardware.transmit_fm433.reset_mock()
+        self.hardware.test.return_value = False
+        self.now = 3600
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_not_called()
+        self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+
     def test_global_command_invalidates_lamp_power(self):
         self.command('fito_lamp_1', 'power', 'ON')
         self.command('global_1', 'night', 'PRESS')
         self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+        self.hardware.transmit_fm433.reset_mock()
+        self.now = 3600
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_not_called()
 
     def test_shutdown_closes_port_without_power_commands(self):
         self.controller.close()

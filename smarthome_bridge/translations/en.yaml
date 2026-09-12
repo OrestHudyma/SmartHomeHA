@@ -14,6 +14,7 @@ configuration:
   mqtt_password:
     name: MQTT password
   refresh_seconds:
-    name: Boiler refresh interval
+    name: Device refresh interval
+    description: Repeat known Boiler and Grow light ON/OFF states, in seconds.
   log_level:
     name: Log level
