@@ -229,6 +229,9 @@ class Controller:
             state["power"] = payload
         elif action in ("fast_on", "fast_off"):
             state["power"] = "ON" if action == "fast_on" else "OFF"
+        elif action == "alarm":
+            # A transient effect has no completion ACK. Do not refresh stale power.
+            state["power"] = None
         elif adapter.config.type == "global":
             # Broadcasts can affect lamps; without feedback their individual states are unknown.
             for key, other in self.adapters.items():

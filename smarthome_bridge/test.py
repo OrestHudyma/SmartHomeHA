@@ -45,6 +45,7 @@ class SettingsTests(unittest.TestCase):
             'smarthome_fito_lamp_1_power': 'Power',
             'smarthome_fito_lamp_1_fast_on': 'Fast on',
             'smarthome_fito_lamp_1_fast_off': 'Fast off',
+            'smarthome_fito_lamp_1_alarm': 'Alarm',
             'smarthome_fito_lamp_1_result': 'Command result',
             'smarthome_global_1_day': 'Day',
             'smarthome_global_1_night': 'Night',
@@ -178,6 +179,49 @@ class ControllerTests(unittest.TestCase):
             with self.subTest(action=action, payload=payload):
                 self.command(key, action, payload)
                 self.hardware.transmit_fm433.assert_called_with(frame)
+
+    def test_alarm_discovery_is_a_nonretained_button(self):
+        messages = discovery_messages(self.settings)
+        config = messages['homeassistant/button/smarthome_fito_lamp_1_alarm/config']
+        self.assertEqual(config['command_topic'], 'smarthome/smarthome/fito_lamp_1/alarm/set')
+        self.assertEqual(config['payload_press'], 'PRESS')
+        self.assertFalse(config['retain'])
+
+    def test_alarm_invalidates_stale_power_and_is_not_refreshed(self):
+        for previous in ('ON', 'OFF'):
+            with self.subTest(previous=previous):
+                self.command('fito_lamp_1', 'power', previous)
+                self.hardware.transmit_fm433.reset_mock()
+                self.command('fito_lamp_1', 'alarm', 'PRESS')
+                self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,ALARM,1,*0B\n')
+                self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+                self.assertEqual(self.controller.states['fito_lamp_1']['result'], 'ok')
+                self.now += self.settings.refresh_seconds
+                self.controller.tick()
+                self.hardware.transmit_fm433.assert_called_once()
+
+    def test_alarm_rejects_retained_and_invalid_commands(self):
+        for key, payload, retained in [('fito_lamp_1', 'PRESS', True),
+                                        ('fito_lamp_1', 'ON', False),
+                                        ('boiler_1', 'PRESS', False)]:
+            self.assertFalse(self.controller.submit(key, 'alarm', payload, retained))
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_not_called()
+
+    def test_failed_alarm_does_not_publish_success(self):
+        self.hardware.transmit_fm433.return_value = 'error'
+        self.command('fito_lamp_1', 'alarm', 'PRESS')
+        self.assertEqual(self.controller.states['fito_lamp_1']['result'], 'transmission failed')
+        self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
+
+    def test_alarm_addresses_the_selected_lamp(self):
+        from devices.fito_lamp import FitoLampAdapter
+        data = options()
+        data['devices'][1]['id'] = '2'
+        config = Settings.from_dict(data).devices[1]
+        adapter = FitoLampAdapter(config, self.hardware)
+        self.assertEqual(adapter.execute('alarm', 'PRESS'), 'ok')
+        self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,ALARM,2,*08\n')
 
     def test_enable_sends_no_power_command_and_disable_blocks_on(self):
         self.command('boiler_1', 'enabled', 'OFF')
@@ -434,7 +478,7 @@ class ControllerTests(unittest.TestCase):
             if 'command_topic' in payload:
                 self.assertFalse(payload['retain'])
         self.assertEqual(sum('/light/' in topic for topic in after), 1)
-        self.assertEqual(sum('/button/' in topic for topic in after), 4)
+        self.assertEqual(sum('/button/' in topic for topic in after), 5)
 
     def test_removed_device_discovery_is_cleaned_up(self):
         stale = 'homeassistant/light/smarthome_fito_lamp_2_power/config'

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Add an addressed Grow light Alarm button for firmware supporting SHFTL ALARM.
+- Mark power unknown after an alarm; do not refresh a stale ON/OFF state.
+
 ## 0.1.2
 
 - Check USB controller health every 10 minutes; retain 5-second reconnect retries.
