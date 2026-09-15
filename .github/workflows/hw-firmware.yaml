@@ -1,0 +1,24 @@
+name: HW firmware regression tests
+on:
+  push:
+    paths:
+      - 'SmartHome_HW/**'
+      - '.github/workflows/hw-firmware.yaml'
+  pull_request:
+    paths:
+      - 'SmartHome_HW/**'
+      - '.github/workflows/hw-firmware.yaml'
+permissions:
+  contents: read
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Run actual firmware with UART stubs and memory sanitizers
+        env:
+          HW_TEST_SANITIZERS: '1'
+        run: python SmartHome_HW/test.py -v

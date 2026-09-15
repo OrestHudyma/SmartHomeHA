@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 // NMEA definitions
 #define NMEA_MAX_SIZE             82
@@ -20,16 +21,16 @@
 #define NMEA_END_DELIMITER        0x0A
 #define NMEA_CHECKSUM_DELIMITER   '*'
 #define NMEA_FIELD_DELIMITER      ','
-#define NMEA_MSG_NAME_SIZE        4
 
 #define NMEA_SHHWI_CMD          1
 #define NMEA_SHHWI_EMPTY        "$SHHWI"
 
 char NMEA_buffer[NMEA_MAX_SIZE];
+char NMEA_output[NMEA_MAX_SIZE];
 char NMEA_SHHWI[NMEA_MAX_SIZE] = NMEA_SHHWI_EMPTY;
 uint8 NMEA_pointer;
-bool NMEA_packet_received = false;
-bool NMEA_cmd_received = false;
+volatile bool NMEA_packet_received = false;
+volatile bool NMEA_cmd_received = false;
 char cmd_buf[NMEA_MAX_SIZE];
 
 const uint8 fm433_preambula[] = {0, 0, 1, 1, 1, 0};
@@ -49,21 +50,31 @@ CY_ISR(isr_server_rx)
     switch(NMEA_buffer[NMEA_pointer])
     {
         case NMEA_START_DELIMITER:
-        NMEA_pointer = 1;
-        break;
+            NMEA_buffer[0] = NMEA_START_DELIMITER;
+            NMEA_pointer = 1;
+            NMEA_buffer[NMEA_pointer] = '\0';
+            break;
         
         case NMEA_END_DELIMITER:
-        if(NMEA_handle_packet(NMEA_buffer, NMEA_SHHWI))
-        {
-            NMEA_packet_received = true;
-        }
-        else NMEA_cmd_received = true;
-        NMEA_pointer = 0;
-        break;
+            if (NMEA_handle_packet(NMEA_buffer, NMEA_SHHWI))
+            {
+                if (!NMEA_packet_received)
+                {
+                    strlcpy(NMEA_output, NMEA_buffer, sizeof(NMEA_output));
+                    NMEA_packet_received = true;
+                }
+            }
+            else
+            {
+                NMEA_cmd_received = true;
+            }
+            NMEA_pointer = 0;
+            NMEA_buffer[0] = 0;
+            break;
         
         default:
-        NMEA_pointer++; 
-        break;
+            NMEA_pointer++;
+            break;
     }
 }
 
@@ -79,12 +90,11 @@ int main(void)
     {
         if(NMEA_packet_received)
         {
-            NMEA_packet_received = false;
             UART_FM433_PutArrayConst(fm433_preambula, sizeof(fm433_preambula));
-            UART_FM433_PutString(NMEA_buffer);
+            UART_FM433_PutString(NMEA_output);
+            NMEA_packet_received = false;  // PutString has finished reading the output buffer.
             UART_Server_PutString("ok");
             UART_Server_PutChar(NMEA_END_DELIMITER);
-            NMEA_buffer[0] = 0;
         }
         if(NMEA_cmd_received)
         {
@@ -108,20 +118,28 @@ bool NMEA_handle_packet(char *packet, char *NMEA_data)
     uint8 checksum = 0;
     char *checksum_delimiter;
     char calculated_checksum[3];
+    const size_t header_length = sizeof(nmea_shhwi_empty) - 1u;
+
+    if (packet == NULL || NMEA_data == NULL) return true;
         
-    // Check if appropriate packet is handled
-    if (!strncmp(packet, NMEA_data, NMEA_MSG_NAME_SIZE))
+    // Match the complete local header and its field delimiter.
+    if (strncmp(packet, nmea_shhwi_empty, header_length) == 0 &&
+        packet[header_length] == NMEA_FIELD_DELIMITER)
     {
         // Check for receive errors
         for(i = 0; i < NMEA_MAX_SIZE; i++)
         {
-            if ((packet[i] < 32) & (packet[i] != 0x0D) & (packet[i] != NMEA_END_DELIMITER)) 
+            if ((uint8)packet[i] < ' ' &&
+                packet[i] != '\r' && packet[i] != NMEA_END_DELIMITER)
             {
                 error = true;
                 break;
             }
-            if (packet[i] != NMEA_END_DELIMITER) break;
+            if (packet[i] == NMEA_END_DELIMITER) break;
         }
+
+        // A complete packet must contain a line terminator within the buffer.
+        if (i == NMEA_MAX_SIZE) error = true;
         
         // Validate checksum and cut packet if no receive errors
         if (!error)
@@ -157,27 +175,47 @@ bool NMEA_handle_packet(char *packet, char *NMEA_data)
 
 bool check_cmd(const char *cmd)
 {
-    return !strncmp(cmd_buf, cmd, sizeof(cmd) - 1);
+    return cmd != NULL && strcmp(cmd_buf, cmd) == 0;
 }
 
 void NMEA_GetField(char *packet, uint8 field, char *result)
 {
-    uint8 i;
+    uint8 i = 0;
     uint8 count = 0;
-    
-    // Search field
-    for (i = 0; (i < NMEA_MAX_SIZE) & (count < field); i++)
+    uint8 start;
+    uint8 length;
+
+    if (result == NULL) return;
+    result[0] = '\0';
+
+    if (packet == NULL) return;
+
+    // Find the requested field without reading past the packet.
+    while (i < NMEA_MAX_SIZE && count < field)
     {
+        if (packet[i] == '\0') return;
         if (packet[i] == NMEA_FIELD_DELIMITER) count++;
+        i++;
     }
-    
-    // Measure field size
-    for (count = 0; count < NMEA_MAX_SIZE; count++)
+
+    if (count != field || i >= NMEA_MAX_SIZE) return;
+
+    start = i;
+
+    // Find the field end within the buffer.
+    while (i < NMEA_MAX_SIZE &&
+           packet[i] != '\0' &&
+           packet[i] != NMEA_FIELD_DELIMITER)
     {
-        if (packet[i + count] == NMEA_FIELD_DELIMITER) break;
-        if (packet[i + count] == 0u) break;
+        i++;
     }
-    strlcpy(result, packet + i, count + 1);  // Add 1 to count for null terminator
+
+    // Reject a field without a terminator within the buffer.
+    if (i >= NMEA_MAX_SIZE) return;
+
+    length = i - start;
+    memcpy(result, packet + start, length);
+    result[length] = '\0';
 }
 
 /* [] END OF FILE */
