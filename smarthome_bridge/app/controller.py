@@ -230,8 +230,9 @@ class Controller:
         elif action in ("fast_on", "fast_off"):
             state["power"] = "ON" if action == "fast_on" else "OFF"
         elif action == "alarm":
-            # A transient effect has no completion ACK. Do not refresh stale power.
-            state["power"] = None
+            # Broadcast recipients are not enumerable on a one-way link. Any
+            # supported device may react; stale refresh must not cancel its effect.
+            self._unknown_power()
         elif adapter.config.type == "global":
             # Broadcasts can affect lamps; without feedback their individual states are unknown.
             for key, other in self.adapters.items():

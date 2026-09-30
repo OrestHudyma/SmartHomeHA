@@ -45,7 +45,7 @@ class SettingsTests(unittest.TestCase):
             'smarthome_fito_lamp_1_power': 'Power',
             'smarthome_fito_lamp_1_fast_on': 'Fast on',
             'smarthome_fito_lamp_1_fast_off': 'Fast off',
-            'smarthome_fito_lamp_1_alarm': 'Alarm',
+            'smarthome_global_1_alarm': 'Alarm',
             'smarthome_fito_lamp_1_result': 'Command result',
             'smarthome_global_1_day': 'Day',
             'smarthome_global_1_night': 'Night',
@@ -174,7 +174,8 @@ class ControllerTests(unittest.TestCase):
                  ('fito_lamp_1', 'fast_on', 'PRESS', '$SHFTL,FON,1,*1F\n'),
                  ('fito_lamp_1', 'fast_off', 'PRESS', '$SHFTL,FOFF,1,*51\n'),
                  ('global_1', 'day', 'PRESS', nmea.compose('SHGLB', 'DAY')),
-                 ('global_1', 'night', 'PRESS', nmea.compose('SHGLB', 'NIGHT'))]
+                 ('global_1', 'night', 'PRESS', nmea.compose('SHGLB', 'NIGHT')),
+                 ('global_1', 'alarm', 'PRESS', '$SHGLB,ALARM,*01\n')]
         for key, action, payload, frame in cases:
             with self.subTest(action=action, payload=payload):
                 self.command(key, action, payload)
@@ -182,8 +183,10 @@ class ControllerTests(unittest.TestCase):
 
     def test_alarm_discovery_is_a_nonretained_button(self):
         messages = discovery_messages(self.settings)
-        config = messages['homeassistant/button/smarthome_fito_lamp_1_alarm/config']
-        self.assertEqual(config['command_topic'], 'smarthome/smarthome/fito_lamp_1/alarm/set')
+        config = messages['homeassistant/button/smarthome_global_1_alarm/config']
+        self.assertEqual(config['command_topic'], 'smarthome/smarthome/global_1/alarm/set')
+        self.assertEqual(config['device']['identifiers'], ['smarthome_global_1'])
+        self.assertNotIn('homeassistant/button/smarthome_fito_lamp_1_alarm/config', messages)
         self.assertEqual(config['payload_press'], 'PRESS')
         self.assertFalse(config['retain'])
 
@@ -191,18 +194,21 @@ class ControllerTests(unittest.TestCase):
         for previous in ('ON', 'OFF'):
             with self.subTest(previous=previous):
                 self.command('fito_lamp_1', 'power', previous)
+                self.command('boiler_1', 'power', previous)
                 self.hardware.transmit_fm433.reset_mock()
-                self.command('fito_lamp_1', 'alarm', 'PRESS')
-                self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,ALARM,1,*0B\n')
+                self.command('global_1', 'alarm', 'PRESS')
+                self.hardware.transmit_fm433.assert_called_once_with(nmea.compose('SHGLB', 'ALARM'))
                 self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
-                self.assertEqual(self.controller.states['fito_lamp_1']['result'], 'ok')
+                self.assertIsNone(self.controller.states['boiler_1']['power'])
+                self.assertEqual(self.controller.states['global_1']['result'], 'ok')
                 self.now += self.settings.refresh_seconds
                 self.controller.tick()
                 self.hardware.transmit_fm433.assert_called_once()
 
     def test_alarm_rejects_retained_and_invalid_commands(self):
-        for key, payload, retained in [('fito_lamp_1', 'PRESS', True),
-                                        ('fito_lamp_1', 'ON', False),
+        for key, payload, retained in [('global_1', 'PRESS', True),
+                                        ('global_1', 'ON', False),
+                                        ('fito_lamp_1', 'PRESS', False),
                                         ('boiler_1', 'PRESS', False)]:
             self.assertFalse(self.controller.submit(key, 'alarm', payload, retained))
         self.controller.tick()
@@ -210,18 +216,52 @@ class ControllerTests(unittest.TestCase):
 
     def test_failed_alarm_does_not_publish_success(self):
         self.hardware.transmit_fm433.return_value = 'error'
-        self.command('fito_lamp_1', 'alarm', 'PRESS')
-        self.assertEqual(self.controller.states['fito_lamp_1']['result'], 'transmission failed')
+        self.command('global_1', 'alarm', 'PRESS')
+        self.assertEqual(self.controller.states['global_1']['result'], 'transmission failed')
         self.assertIsNone(self.controller.states['fito_lamp_1']['power'])
 
-    def test_alarm_addresses_the_selected_lamp(self):
-        from devices.fito_lamp import FitoLampAdapter
+    def test_alarm_broadcasts_once_for_multiple_lamps(self):
         data = options()
-        data['devices'][1]['id'] = '2'
-        config = Settings.from_dict(data).devices[1]
-        adapter = FitoLampAdapter(config, self.hardware)
-        self.assertEqual(adapter.execute('alarm', 'PRESS'), 'ok')
-        self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,ALARM,2,*08\n')
+        data['devices'].append({'type': 'fito_lamp', 'id': '2', 'name': 'Lamp 2'})
+        self.controller = Controller(Settings.from_dict(data), self.store, self.publish,
+                                     self.factory, lambda: self.now)
+        self.controller.network_changed(True)
+        self.controller.tick()
+        for key in ('fito_lamp_1', 'fito_lamp_2', 'boiler_1'):
+            self.command(key, 'power', 'ON')
+        self.hardware.transmit_fm433.reset_mock()
+        self.command('global_1', 'alarm', 'PRESS')
+        self.hardware.transmit_fm433.assert_called_once_with(nmea.compose('SHGLB', 'ALARM'))
+        for key in ('fito_lamp_1', 'fito_lamp_2', 'boiler_1'):
+            self.assertIsNone(self.controller.states[key]['power'])
+
+    def test_alarm_preserves_disabled_interlock(self):
+        self.command('boiler_1', 'enabled', 'OFF')
+        self.command('global_1', 'alarm', 'PRESS')
+        self.assertFalse(self.store.enabled('boiler_1'))
+        self.assertFalse(self.controller.states['boiler_1']['enabled'])
+        self.hardware.transmit_fm433.reset_mock()
+        self.command('boiler_1', 'power', 'ON')
+        self.hardware.transmit_fm433.assert_not_called()
+
+    def test_old_alarm_discovery_removed_and_new_button_published(self):
+        stale = 'homeassistant/button/smarthome_fito_lamp_1_alarm/config'
+        self.store.set_discovery_topics([stale])
+        self.publish.reset_mock()
+        self.controller.resync.set()
+        self.controller.tick()
+        self.publish.assert_any_call(stale, '', True)
+        self.assertNotIn(stale, self.store.data['discovery_topics'])
+        self.assertIn('homeassistant/button/smarthome_global_1_alarm/config',
+                      self.store.data['discovery_topics'])
+
+    def test_explicit_power_after_alarm_resumes_refresh_for_that_device_only(self):
+        self.command('global_1', 'alarm', 'PRESS')
+        self.command('fito_lamp_1', 'power', 'OFF')
+        self.hardware.transmit_fm433.reset_mock()
+        self.now += self.settings.refresh_seconds
+        self.controller.tick()
+        self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,OFF,1,*17\n')
 
     def test_enable_sends_no_power_command_and_disable_blocks_on(self):
         self.command('boiler_1', 'enabled', 'OFF')
@@ -610,6 +650,18 @@ class MQTTIntegrationTests(unittest.TestCase):
         self.wait(lambda: self.has('boiler_1/power/state', 'OFF'))
         self.assertTrue(all(c.args[0] != '$SHBCC,ON,*58\n'
                             for c in self.hardware.transmit_fm433.call_args_list))
+
+    def test_global_alarm_round_trip_and_retained_rejection(self):
+        self.send('global_1/alarm/set', 'PRESS', retain=True)
+        self.send('fito_lamp_1/alarm/set', 'PRESS')  # Old addressed topic is rejected.
+        self.send('fito_lamp_1/power/set', 'ON')
+        self.wait(lambda: self.has('fito_lamp_1/power/state', 'ON'))
+        self.hardware.transmit_fm433.assert_called_once_with('$SHFTL,ON,1,*59\n')
+        self.send('global_1/alarm/set', 'PRESS')
+        self.wait(lambda: self.has('global_1/result', 'ok'))
+        self.assertEqual(self.hardware.transmit_fm433.call_args_list,
+                         [call('$SHFTL,ON,1,*59\n'), call('$SHGLB,ALARM,*01\n')])
+        self.wait(lambda: self.controller.states['fito_lamp_1']['power'] is None)
 
     def test_no_offline_command_replay(self):
         self.bridge.close()
