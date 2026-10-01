@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4
+
+- Move Alarm from addressed Grow light controls to Global controls (`SHGLB,ALARM`).
+- Remove previously published per-lamp Alarm discovery entries on synchronization.
+- Invalidate all device power states after Alarm so periodic refresh cannot cancel
+  an effect on any supporting receiver. Boiler Enabled remains unchanged.
+- Requires global-Alarm receiver firmware; update automations using the old button.
+
 ## 0.1.3
 
 - Add an addressed Grow light Alarm button for firmware supporting SHFTL ALARM.

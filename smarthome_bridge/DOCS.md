@@ -76,8 +76,13 @@ Power represents the **last successfully transmitted command**, not measured
 physical state. Entity attributes include `physical_state_confirmed: false`.
 Power is unknown after startup, USB recovery or MQTT reconnection. An initial
 `power=True` in an upstream hardware class does not cause a power-on command.
-The user or an HA automation must issue a new command. Global commands make lamp
-states unknown because there is no individual acknowledgement. Firmware schedules
+The user or an HA automation must issue a new command. Global DAY/NIGHT make lamp
+states unknown; global ALARM makes all device power states unknown and suspends
+their periodic power refresh. Enabled interlocks are unchanged. Global Alarm is
+an event, never a periodically refreshed mode. Receivers must implement
+`$SHGLB,ALARM,*01` followed by LF; no device ID is sent. Old addressed Alarm
+buttons are removed on discovery synchronization; migrate their automations to
+Global controls Alarm. There is no individual acknowledgement. Firmware schedules
 can change physical state independently of the last transmitted command.
 
 The boiler's **Enabled** interlock is saved in `/data/state.json`. Disabling it
