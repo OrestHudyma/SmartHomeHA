@@ -1,0 +1,21 @@
+type: vertical-stack
+cards:
+  - type: tile
+    entity: input_boolean.night_mode
+    name: Night mode
+    features:
+      - type: toggle
+  - type: horizontal-stack
+    cards:
+      - type: button
+        name: Day
+        icon: mdi:weather-sunny
+        tap_action:
+          action: perform-action
+          perform_action: script.day_mode
+      - type: button
+        name: Night
+        icon: mdi:weather-night
+        tap_action:
+          action: perform-action
+          perform_action: script.night_mode

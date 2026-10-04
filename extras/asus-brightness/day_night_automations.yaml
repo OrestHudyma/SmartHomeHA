@@ -1,0 +1,129 @@
+- id: shared_day_night_schedule
+  alias: Day/Night - Schedule
+  description: Apply real schedule edges; preserve manual overrides across restarts until the next boundary.
+  triggers:
+    - trigger: state
+      entity_id: schedule.night_mode
+      from: 'off'
+      to: 'on'
+      id: edge
+    - trigger: state
+      entity_id: schedule.night_mode
+      from: 'on'
+      to: 'off'
+      id: edge
+    - trigger: homeassistant
+      event: start
+      id: startup
+  actions:
+    - wait_template: "{{ states('schedule.night_mode') in ['on', 'off'] }}"
+      timeout: '00:01:00'
+      continue_on_timeout: false
+    - if:
+        - condition: template
+          value_template: >-
+            {{ trigger.id == 'edge'
+               or not is_state('input_boolean.day_night_initialized', 'on')
+               or as_timestamp(now()) >= as_timestamp(states('input_datetime.day_night_next_boundary'), 0) }}
+      then:
+        - action: "input_boolean.turn_{{ 'on' if is_state('schedule.night_mode', 'on') else 'off' }}"
+          target:
+            entity_id: input_boolean.night_mode
+    - if:
+        - condition: template
+          value_template: "{{ state_attr('schedule.night_mode', 'next_event') is not none }}"
+      then:
+        - action: input_datetime.set_datetime
+          target:
+            entity_id: input_datetime.day_night_next_boundary
+          data:
+            timestamp: "{{ as_timestamp(state_attr('schedule.night_mode', 'next_event')) }}"
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.day_night_initialized
+  mode: restart
+
+- id: shared_day_night_existing_buttons
+  alias: Day/Night - Existing bridge buttons
+  description: Existing Day/Night MQTT buttons also update the shared desired mode. Setting an unchanged helper is idempotent.
+  triggers:
+    - trigger: mqtt
+      topic: smarthome/smarthome/global_1/day/set
+      payload: PRESS
+      id: day
+    - trigger: mqtt
+      topic: smarthome/smarthome/global_1/night/set
+      payload: PRESS
+      id: night
+  actions:
+    - action: "input_boolean.turn_{{ 'on' if trigger.id == 'night' else 'off' }}"
+      target:
+        entity_id: input_boolean.night_mode
+  mode: queued
+  max: 10
+
+- id: shared_day_night_apply
+  alias: Day/Night - Apply shared mode
+  description: Update ASUS first, then broadcast the requested mode when the bridge is available.
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.night_mode
+      to: 'on'
+    - trigger: state
+      entity_id: input_boolean.night_mode
+      to: 'off'
+    - trigger: state
+      entity_id: input_boolean.day_night_initialized
+      to: 'on'
+    - trigger: homeassistant
+      event: start
+    - trigger: mqtt
+      topic: smarthome/smarthome/availability
+      payload: online
+  conditions:
+    - condition: state
+      entity_id: input_boolean.day_night_initialized
+      state: 'on'
+    - condition: template
+      value_template: "{{ states('input_boolean.night_mode') in ['on', 'off'] }}"
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: wallpanel/asus/brightness/set
+        payload: "{{ 15 if is_state('input_boolean.night_mode', 'on') else 100 }}"
+        qos: 1
+        retain: true
+    - wait_template: "{{ not is_state('button.zagalne_keruvannia_nich', 'unavailable') }}"
+      timeout: '00:00:15'
+      continue_on_timeout: false
+    # Let bridge discovery/subscription synchronization complete on reconnect.
+    - delay: '00:00:01'
+    - action: button.press
+      target:
+        entity_id: "{{ 'button.zagalne_keruvannia_nich' if is_state('input_boolean.night_mode', 'on') else 'button.zagalne_keruvannia_den' }}"
+  mode: restart
+
+- id: asus_display_brightness_schedule
+  alias: ASUS - Restore shared brightness
+  description: Reconnects restore the shared mode, never override it from the schedule and never retransmit radio commands.
+  triggers:
+    - trigger: mqtt
+      topic: wallpanel/asus/brightness/availability
+      payload: online
+    - trigger: mqtt
+      topic: homeassistant/status
+      payload: online
+  conditions:
+    - condition: state
+      entity_id: input_boolean.day_night_initialized
+      state: 'on'
+    - condition: template
+      value_template: "{{ states('input_boolean.night_mode') in ['on', 'off'] }}"
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: wallpanel/asus/brightness/set
+        payload: "{{ 15 if is_state('input_boolean.night_mode', 'on') else 100 }}"
+        qos: 1
+        retain: true
+  mode: restart

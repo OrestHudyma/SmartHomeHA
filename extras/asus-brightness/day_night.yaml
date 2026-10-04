@@ -1,0 +1,32 @@
+# Home Assistant package. Install as /config/packages/day_night.yaml.
+# Merge day_night_automations.yaml into /config/automations.yaml for UI editing.
+# The helper is the desired mode, not radio-device feedback.
+input_boolean:
+  night_mode:
+    name: Night mode
+    icon: mdi:weather-night
+  day_night_initialized:
+    name: Day/Night initialized
+    icon: mdi:check-circle
+
+input_datetime:
+  day_night_next_boundary:
+    name: Day/Night next schedule boundary
+    has_date: true
+    has_time: true
+
+script:
+  day_mode:
+    alias: Day
+    icon: mdi:weather-sunny
+    sequence:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.night_mode
+  night_mode:
+    alias: Night
+    icon: mdi:weather-night
+    sequence:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.night_mode
